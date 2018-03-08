@@ -3038,65 +3038,67 @@ class DboSource extends DataSource {
 		$keys = array_filter($keys);
 
 		$result = array();
-		while (!empty($keys)) {
-			list($key, $dir) = each($keys);
-			array_shift($keys);
+		if(!empty($keys)) {
+			foreach ($keys as $key => $dir) {
 
-			if (is_numeric($key)) {
-				$key = $dir;
-				$dir = $direction;
-			}
+				array_shift($keys);
 
-			if (is_string($key) && strpos($key, ',') !== false && !preg_match('/\(.+\,.+\)/', $key)) {
-				$key = array_map('trim', explode(',', $key));
-			}
+				if (is_numeric($key)) {
+					$key = $dir;
+					$dir = $direction;
+				}
 
-			if (is_array($key)) {
-				//Flatten the array
-				$key = array_reverse($key, true);
-				foreach ($key as $k => $v) {
-					if (is_numeric($k)) {
-						array_unshift($keys, $v);
-					} else {
-						$keys = array($k => $v) + $keys;
+				if (is_string($key) && strpos($key, ',') !== false && !preg_match('/\(.+\,.+\)/', $key)) {
+					$key = array_map('trim', explode(',', $key));
+				}
+
+				if (is_array($key)) {
+					//Flatten the array
+					$key = array_reverse($key, true);
+					foreach ($key as $k => $v) {
+						if (is_numeric($k)) {
+							array_unshift($keys, $v);
+						} else {
+							$keys = array($k => $v) + $keys;
+						}
+					}
+					continue;
+				} elseif (is_object($key) && isset($key->type) && $key->type === 'expression') {
+					$result[] = $key->value;
+					continue;
+				}
+
+				if (preg_match('/\\x20(ASC|DESC).*/i', $key, $_dir)) {
+					$dir = $_dir[0];
+					$key = preg_replace('/\\x20(ASC|DESC).*/i', '', $key);
+				}
+
+				$key = trim($key);
+
+				if ($Model !== null) {
+					if ($Model->isVirtualField($key)) {
+						$key = '(' . $this->_quoteFields($Model->getVirtualField($key)) . ')';
+					}
+
+					list($alias) = pluginSplit($key);
+
+					if ($alias !== $Model->alias && is_object($Model->{$alias}) && $Model->{$alias}->isVirtualField($key)) {
+						$key = '(' . $this->_quoteFields($Model->{$alias}->getVirtualField($key)) . ')';
 					}
 				}
-				continue;
-			} elseif (is_object($key) && isset($key->type) && $key->type === 'expression') {
-				$result[] = $key->value;
-				continue;
-			}
 
-			if (preg_match('/\\x20(ASC|DESC).*/i', $key, $_dir)) {
-				$dir = $_dir[0];
-				$key = preg_replace('/\\x20(ASC|DESC).*/i', '', $key);
-			}
-
-			$key = trim($key);
-
-			if ($Model !== null) {
-				if ($Model->isVirtualField($key)) {
-					$key = '(' . $this->_quoteFields($Model->getVirtualField($key)) . ')';
+				if (strpos($key, '.')) {
+					$key = preg_replace_callback('/([a-zA-Z0-9_-]{1,})\\.([a-zA-Z0-9_-]{1,})/', array(&$this, '_quoteMatchedField'), $key);
 				}
 
-				list($alias) = pluginSplit($key);
-
-				if ($alias !== $Model->alias && is_object($Model->{$alias}) && $Model->{$alias}->isVirtualField($key)) {
-					$key = '(' . $this->_quoteFields($Model->{$alias}->getVirtualField($key)) . ')';
+				if (!preg_match('/\s/', $key) && strpos($key, '.') === false) {
+					$key = $this->name($key);
 				}
+
+				$key .= ' ' . trim($dir);
+
+				$result[] = $key;
 			}
-
-			if (strpos($key, '.')) {
-				$key = preg_replace_callback('/([a-zA-Z0-9_-]{1,})\\.([a-zA-Z0-9_-]{1,})/', array(&$this, '_quoteMatchedField'), $key);
-			}
-
-			if (!preg_match('/\s/', $key) && strpos($key, '.') === false) {
-				$key = $this->name($key);
-			}
-
-			$key .= ' ' . trim($dir);
-
-			$result[] = $key;
 		}
 
 		if (!empty($result)) {
